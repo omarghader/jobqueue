@@ -2,9 +2,13 @@
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
-package jobqueue
+package dao
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/omarghader/jobqueue/models"
+)
 
 var (
 	// ErrNotFound must be returned from Store interface when a certain job
@@ -20,14 +24,14 @@ type Store interface {
 	Start() error
 
 	// Create adds a job to the store.
-	Create(*Job) error
+	Create(*models.Job) error
 
 	// Delete removes a job from the store.
-	Delete(*Job) error
+	Delete(*models.Job) error
 
 	// Update updates a job in the store. This is called frequently as jobs
 	// are processed.
-	Update(*Job) error
+	Update(*models.Job) error
 
 	// Next picks the next job to execute.
 	//
@@ -36,43 +40,21 @@ type Store interface {
 	//
 	// If no job is ready to be executed, e.g. the job queue is idle, the
 	// store must return nil for both the job and the error.
-	Next() (*Job, error)
+	Next() (*models.Job, error)
 
 	// Stats returns statistics about the store, e.g. the number of jobs
 	// waiting, working, succeeded, and failed. This is run when the manager
 	// starts up to get initial stats.
-	Stats(*StatsRequest) (*Stats, error)
+	Stats(*models.StatsRequest) (*models.Stats, error)
 
 	// Lookup returns the details of a job by its identifier.
 	// If the job could not be found, ErrNotFound must be returned.
-	Lookup(string) (*Job, error)
+	Lookup(string) (*models.Job, error)
 
 	// LookupByCorrelationID returns the details of jobs by their correlation identifier.
 	// If no such job could be found, an empty array is returned.
-	LookupByCorrelationID(string) ([]*Job, error)
+	LookupByCorrelationID(string) ([]*models.Job, error)
 
 	// List returns a list of jobs filtered by the ListRequest.
-	List(*ListRequest) (*ListResponse, error)
-}
-
-// StatsRequest returns information about the number of managed jobs.
-type StatsRequest struct {
-	Topic            string // filter by topic
-	CorrelationGroup string // filter by correlation group
-}
-
-// ListRequest specifies a filter for listing jobs.
-type ListRequest struct {
-	Topic            string // filter by topic
-	CorrelationGroup string // filter by correlation group
-	CorrelationID    string // filter by correlation identifier
-	State            string // filter by job state
-	Limit            int    // maximum number of jobs to return
-	Offset           int    // number of jobs to skip (for pagination)
-}
-
-// ListResponse is the outcome of invoking List on the Store.
-type ListResponse struct {
-	Total int    // total number of jobs found, excluding pagination
-	Jobs  []*Job // list of jobs
+	List(*models.ListRequest) (*models.ListResponse, error)
 }

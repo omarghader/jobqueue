@@ -1,19 +1,4 @@
-// Copyright 2016-present Oliver Eilhard. All rights reserved.
-// Use of this source code is governed by a MIT-license.
-// See http://olivere.mit-license.org/license.txt for details.
-
-package jobqueue
-
-const (
-	// Waiting for executing.
-	Waiting string = "waiting"
-	// Working is the state for currently executing jobs.
-	Working string = "working"
-	// Succeeded without errors.
-	Succeeded string = "succeeded"
-	// Failed even after retries.
-	Failed string = "failed"
-)
+package protocol
 
 // Job is a task that needs to be executed.
 type Job struct {
@@ -30,4 +15,27 @@ type Job struct {
 	Created          int64         `json:"created"`   // time when Add was called (in UnixNano)
 	Started          int64         `json:"started"`   // time when the job was started (in UnixNano)
 	Completed        int64         `json:"completed"` // time when job reached either state Succeeded or Failed (in UnixNano)
+	LastMod          int64         `json:"last_mod"`
+	FirstStart       int64         `json:"first_start"`
+	Delay            int64         `json:"delay"`
+	Repeat           int64         `json:"repeat"`
+	NbSuccess        int64         `json:"nb_sucess"`
+	NbError          int64         `json:"nb_error"`
+	Notification     Notification  `json:"notification"`
+}
+
+// ListRequest specifies a filter for listing jobs.
+type ListRequest struct {
+	Topic            string `json:"topic"`             // filter by topic
+	CorrelationGroup string `json:"correlation_group"` // filter by correlation group
+	CorrelationID    string `json:"correlation_id"`    // filter by correlation identifier
+	State            string `json:"state"`             // filter by job state
+	Limit            int    `json:"limit"`             // maximum number of jobs to return
+	Offset           int    `json:"offset"`            // number of jobs to skip (for pagination)
+}
+
+// ListResponse is the outcome of invoking List on the Store.
+type ListResponse struct {
+	Total int   // total number of jobs found, excluding pagination
+	Jobs  []Job // list of jobs
 }

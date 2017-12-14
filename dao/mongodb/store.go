@@ -1,7 +1,6 @@
 package mongodb
 
 import (
-	"encoding/json"
 	"errors"
 	"net/url"
 	"time"
@@ -9,7 +8,8 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 
-	"github.com/olivere/jobqueue"
+	"github.com/omarghader/jobqueue/dao"
+	"github.com/omarghader/jobqueue/models"
 )
 
 const (
@@ -41,7 +41,7 @@ type Store struct {
 type StoreOption func(*Store)
 
 // NewStore creates a new MongoDB-based storage backend.
-func NewStore(mongodbURL string, options ...StoreOption) (*Store, error) {
+func NewStore(mongodbURL string, options ...StoreOption) (dao.Store, error) {
 	st := &Store{
 		collectionName: defaultCollectionName,
 	}
@@ -111,7 +111,7 @@ func SetCollectionName(collectionName string) StoreOption {
 func (s *Store) wrapError(err error) error {
 	if err == mgo.ErrNotFound {
 		// Map gorm.ErrRecordNotFound to jobqueue-specific "not found" error
-		return jobqueue.ErrNotFound
+		return dao.ErrNotFound
 	}
 	return err
 }
@@ -121,85 +121,71 @@ func (s *Store) wrapError(err error) error {
 // for new jobs.
 func (s *Store) Start() error {
 	// TODO This will fail if we have two or more job queues working on the same database!
-	change := bson.M{"$set": bson.M{"state": jobqueue.Failed, "completed": time.Now().UnixNano()}}
+	change := bson.M{"$set": bson.M{"state": models.Failed, "completed": time.Now().UnixNano()}}
 	_, err := s.coll.UpdateAll(
-		bson.M{"state": jobqueue.Working},
+		bson.M{"state": models.Working},
 		change,
 	)
 	return s.wrapError(err)
 }
 
 // Create adds a new job to the store.
-func (s *Store) Create(job *jobqueue.Job) error {
-	j, err := newJob(job)
-	if err != nil {
-		return err
-	}
-	j.LastMod = j.Created
-	return s.wrapError(s.coll.Insert(j))
+func (s *Store) Create(job *models.Job) error {
+	return s.wrapError(s.coll.Insert(job))
 }
 
 // Update updates the job in the store.
-func (s *Store) Update(job *jobqueue.Job) error {
-	j, err := newJob(job)
-	if err != nil {
-		return err
-	}
-	j.LastMod = time.Now().UnixNano()
-	return s.wrapError(s.coll.UpdateId(j.ID, j))
+func (s *Store) Update(job *models.Job) error {
+	job.LastMod = time.Now().UnixNano()
+	return s.wrapError(s.coll.UpdateId(job.ID, job))
 }
 
 // Next picks the next job to execute, or nil if no executable job is available.
-func (s *Store) Next() (*jobqueue.Job, error) {
-	var j Job
-	err := s.coll.Find(bson.M{"state": jobqueue.Waiting}).Sort("-rank", "-priority").One(&j)
+func (s *Store) Next() (*models.Job, error) {
+	var j models.Job
+	err := s.coll.Find(bson.M{"state": models.Waiting,
+		"priority": bson.M{"$gt": -time.Now().UnixNano()},
+	}).Sort("-rank", "-priority").One(&j)
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
-	return j.ToJob()
+	return &j, nil
 }
 
 // Delete removes a job from the store.
-func (s *Store) Delete(job *jobqueue.Job) error {
+func (s *Store) Delete(job *models.Job) error {
 	return s.wrapError(s.coll.RemoveId(job.ID))
 }
 
 // Lookup retrieves a single job in the store by its identifier.
-func (s *Store) Lookup(id string) (*jobqueue.Job, error) {
-	var j Job
+func (s *Store) Lookup(id string) (*models.Job, error) {
+	var j models.Job
 	err := s.coll.FindId(id).One(&j)
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
-	job, err := j.ToJob()
-	if err != nil {
-		return nil, s.wrapError(err)
-	}
-	return job, nil
+
+	return &j, nil
 }
 
 // LookupByCorrelationID returns the details of jobs by their correlation identifier.
 // If no such job could be found, an empty array is returned.
-func (s *Store) LookupByCorrelationID(correlationID string) ([]*jobqueue.Job, error) {
-	var jobs []Job
+func (s *Store) LookupByCorrelationID(correlationID string) ([]*models.Job, error) {
+	var jobs []models.Job
 	err := s.coll.Find(bson.M{"correlation_id": correlationID}).All(&jobs)
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
-	result := make([]*jobqueue.Job, len(jobs))
+	result := make([]*models.Job, len(jobs))
 	for i, j := range jobs {
-		job, err := j.ToJob()
-		if err != nil {
-			return nil, s.wrapError(err)
-		}
-		result[i] = job
+		result[i] = &j
 	}
 	return result, nil
 }
 
 // List returns a list of all jobs stored in the data store.
-func (s *Store) List(request *jobqueue.ListRequest) (*jobqueue.ListResponse, error) {
-	rsp := &jobqueue.ListResponse{}
+func (s *Store) List(request *models.ListRequest) (*models.ListResponse, error) {
+	rsp := &models.ListResponse{}
 
 	// Common filters for both Count and Find
 	query := bson.M{}
@@ -224,23 +210,19 @@ func (s *Store) List(request *jobqueue.ListRequest) (*jobqueue.ListResponse, err
 	rsp.Total = count
 
 	// Find
-	var list []*Job
+	var list []*models.Job
 	err = s.coll.Find(query).Sort("-last_mod").Skip(request.Offset).Limit(request.Limit).All(&list)
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
 	for _, j := range list {
-		job, err := j.ToJob()
-		if err != nil {
-			return nil, s.wrapError(err)
-		}
-		rsp.Jobs = append(rsp.Jobs, job)
+		rsp.Jobs = append(rsp.Jobs, *j)
 	}
 	return rsp, nil
 }
 
 // Stats returns statistics about the jobs in the store.
-func (s *Store) Stats(req *jobqueue.StatsRequest) (*jobqueue.Stats, error) {
+func (s *Store) Stats(req *models.StatsRequest) (*models.Stats, error) {
 	buildFilter := func(state string) bson.M {
 		f := bson.M{"state": state}
 		if req.Topic != "" {
@@ -251,98 +233,27 @@ func (s *Store) Stats(req *jobqueue.StatsRequest) (*jobqueue.Stats, error) {
 		}
 		return f
 	}
-	waiting, err := s.coll.Find(buildFilter(jobqueue.Waiting)).Count()
+	waiting, err := s.coll.Find(buildFilter(models.Waiting)).Count()
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
 
-	working, err := s.coll.Find(buildFilter(jobqueue.Working)).Count()
+	working, err := s.coll.Find(buildFilter(models.Working)).Count()
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
-	succeeded, err := s.coll.Find(buildFilter(jobqueue.Succeeded)).Count()
+	succeeded, err := s.coll.Find(buildFilter(models.Succeeded)).Count()
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
-	failed, err := s.coll.Find(buildFilter(jobqueue.Failed)).Count()
+	failed, err := s.coll.Find(buildFilter(models.Failed)).Count()
 	if err != nil {
 		return nil, s.wrapError(err)
 	}
-	return &jobqueue.Stats{
+	return &models.Stats{
 		Waiting:   waiting,
 		Working:   working,
 		Succeeded: succeeded,
 		Failed:    failed,
 	}, nil
-}
-
-// -- MongoDB-internal representation of a task --
-
-type Job struct {
-	ID               string `bson:"_id"`
-	Topic            string
-	State            string
-	Args             *string
-	Rank             int
-	Priority         int64
-	Retry            int
-	MaxRetry         int    `bson:"max_retry"`
-	CorrelationGroup string `bson:"correlation_group"`
-	CorrelationID    string `bson:"correlation_id"`
-	Created          int64
-	Started          int64
-	Completed        int64
-	LastMod          int64 `bson:"last_mod"`
-}
-
-func newJob(job *jobqueue.Job) (*Job, error) {
-	var args *string
-	if job.Args != nil {
-		v, err := json.Marshal(job.Args)
-		if err != nil {
-			return nil, err
-		}
-		s := string(v)
-		args = &s
-	}
-	return &Job{
-		ID:               job.ID,
-		Topic:            job.Topic,
-		State:            job.State,
-		Args:             args,
-		Rank:             job.Rank,
-		Priority:         job.Priority,
-		Retry:            job.Retry,
-		MaxRetry:         job.MaxRetry,
-		CorrelationGroup: job.CorrelationGroup,
-		CorrelationID:    job.CorrelationID,
-		Created:          job.Created,
-		Started:          job.Started,
-		Completed:        job.Completed,
-	}, nil
-}
-
-func (j *Job) ToJob() (*jobqueue.Job, error) {
-	var args []interface{}
-	if j.Args != nil && *j.Args != "" {
-		if err := json.Unmarshal([]byte(*j.Args), &args); err != nil {
-			return nil, err
-		}
-	}
-	job := &jobqueue.Job{
-		ID:               j.ID,
-		Topic:            j.Topic,
-		State:            j.State,
-		Args:             args,
-		Rank:             j.Rank,
-		Priority:         j.Priority,
-		Retry:            j.Retry,
-		MaxRetry:         j.MaxRetry,
-		CorrelationGroup: j.CorrelationGroup,
-		CorrelationID:    j.CorrelationID,
-		Created:          j.Created,
-		Started:          j.Started,
-		Completed:        j.Completed,
-	}
-	return job, nil
 }

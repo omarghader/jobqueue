@@ -10,7 +10,7 @@ import (
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/jinzhu/gorm"
 
-	"github.com/olivere/jobqueue"
+	"github.com/omarghader/jobqueue"
 )
 
 const (
@@ -289,7 +289,7 @@ func (s *Store) List(request *jobqueue.ListRequest) (*jobqueue.ListResponse, err
 	if request.CorrelationID != "" {
 		qry = qry.Where("correlation_id = ?", request.CorrelationID)
 	}
-	var list []*Job
+	var list []*models.Job
 	err = qry.Find(&list).Error
 	if err != nil {
 		return nil, s.wrapError(err)
@@ -359,7 +359,7 @@ func (Job) TableName() string {
 	return "jobqueue_jobs"
 }
 
-func newJob(job *jobqueue.Job) (*Job, error) {
+func newJob(job *jobqueue.Job) (*models.Job, error) {
 	var args string
 	if job.Args != nil {
 		v, err := json.Marshal(job.Args)
@@ -385,7 +385,7 @@ func newJob(job *jobqueue.Job) (*Job, error) {
 	}, nil
 }
 
-func (j *Job) ToJob() (*jobqueue.Job, error) {
+func (j *models.Job) ToJob() (*jobqueue.Job, error) {
 	var args []interface{}
 	if j.Args.Valid && j.Args.String != "" {
 		if err := json.Unmarshal([]byte(j.Args.String), &args); err != nil {

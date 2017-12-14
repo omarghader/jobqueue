@@ -15,18 +15,18 @@
 // the store to create the job.
 //
 // A scheduler inside manager periodically asks the Store for jobs in the
-// Waiting state. The scheduler will tell idle workers to handle those jobs.
+// models.Waiting state. The scheduler will tell idle workers to handle those jobs.
 // The number of concurrent jobs can be specified via the manager option
 // SetConcurrency.
 //
-// A job in jobqueue has always in one of these four states: Waiting (to be
+// A job in jobqueue has always in one of these four states: models.Waiting (to be
 // executed), Working (currently busy working on a job), Succeeded (completed
 // successfully), and Failed (failed to complete successfully even after
 // retrying).
 //
 // A job can be configured to be retried. To do so, specify the MaxRetry
 // field in Job. Only if the number of retries exceeds the MaxRetry value,
-// the job gets marked as failed. Otherwise, it gets put back into Waiting
+// the job gets marked as failed. Otherwise, it gets put back into models.Waiting
 // state and rescheduled (after an some backoff time). The backoff function
 // is exponential by default (see backoff.go). However, one can specify a
 // custom backoff function by the manager option SetBackoffFunc.
@@ -36,4 +36,4 @@
 // E.g. the MySQL-based store implementation moves all jobs still marked as
 // Working into the Failed state. Notice that you are responsible to prevent
 // that two concurrent managers try to access the same database!
-package jobqueue
+package main

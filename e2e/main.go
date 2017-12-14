@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/olivere/jobqueue"
-	"github.com/olivere/jobqueue/mongodb"
-	"github.com/olivere/jobqueue/mysql"
+	"github.com/omarghader/jobqueue"
+	"github.com/omarghader/jobqueue/mongodb"
+	"github.com/omarghader/jobqueue/mysql"
 )
 
 func main() {

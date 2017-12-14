@@ -1,8 +1,4 @@
-// Copyright 2016-present Oliver Eilhard. All rights reserved.
-// Use of this source code is governed by a MIT-license.
-// See http://olivere.mit-license.org/license.txt for details.
-
-package jobqueue
+package protocol
 
 // Stats returns statistics about the job queue.
 type Stats struct {
@@ -10,4 +6,10 @@ type Stats struct {
 	Working   int `json:"working"`   // number of jobs currently being executed
 	Succeeded int `json:"succeeded"` // number of successfully completed jobs
 	Failed    int `json:"failed"`    // number of failed jobs (even after retries)
+}
+
+// StatsRequest returns information about the number of managed jobs.
+type StatsRequest struct {
+	Topic            string // filter by topic
+	CorrelationGroup string // filter by correlation group
 }

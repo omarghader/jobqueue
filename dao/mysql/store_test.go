@@ -1,19 +1,19 @@
-package mongodb
+package mysql
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"testing"
 	"time"
 
-	"gopkg.in/mgo.v2"
+	mysqldriver "github.com/go-sql-driver/mysql"
+	"github.com/jinzhu/gorm"
 
-	"github.com/olivere/jobqueue"
+	"github.com/omarghader/jobqueue"
 )
 
 const (
-	testDBURL = "mongodb://localhost/jobqueue_e2e"
+	testDBURL = "root@tcp(127.0.0.1:3306)/jobqueue_e2e?loc=UTC&parseTime=true"
 )
 
 func isTravis() bool {
@@ -26,22 +26,24 @@ func travisGoVersion() string {
 
 // dropDatabase drops the database specified in the dburl connection string.
 func dropDatabase(t *testing.T, dburl string) {
-	uri, err := url.Parse(dburl)
+	cfg, err := mysqldriver.ParseDSN(dburl)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uri.Path == "" || uri.Path == "/" {
-		t.Fatalf("no database specified in %q", dburl)
+	dbname := cfg.DBName
+	if dbname == "" {
+		t.Fatal("no database specified")
 	}
-	dbname := uri.Path[1:]
-
-	session, err := mgo.DialWithTimeout(dburl, 15*time.Second)
+	// Connect without DB name
+	cfg.DBName = ""
+	db, err := gorm.Open("mysql", cfg.FormatDSN())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer session.Close()
+	defer db.Close()
 
-	err = session.DB(dbname).DropDatabase()
+	// Create database
+	_, err = db.DB().Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbname))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +57,7 @@ func TestNewStore(t *testing.T) {
 
 	defer dropDatabase(t, testDBURL)
 
-	_, err := NewStore(testDBURL)
+	_, err := NewStore(testDBURL, SetDebug(true))
 	if err != nil {
 		t.Fatalf("NewStore returned %v", err)
 	}
@@ -71,7 +73,7 @@ func TestJobSuccess(t *testing.T) {
 
 	jobDone := make(chan struct{}, 1)
 
-	st, err := NewStore(testDBURL)
+	st, err := NewStore(testDBURL, SetDebug(true))
 	if err != nil {
 		t.Fatalf("NewStore returned %v", err)
 	}

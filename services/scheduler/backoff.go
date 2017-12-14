@@ -2,17 +2,14 @@
 // Use of this source code is governed by a MIT-license.
 // See http://olivere.mit-license.org/license.txt for details.
 
-package jobqueue
+package scheduler
 
 import (
 	"math"
 	"time"
 )
 
-// BackoffFunc is a callback that returns a backoff. It is configurable
-// via the SetBackoff option in the manager. The BackoffFunc is used to
-// vary the timespan between retries of failed jobs.
-type BackoffFunc func(attempts int) time.Duration
+// type BackoffFunc func(attempts int) time.Duration
 
 // exponentialBackoff is the default backoff function. It performs
 // exponential backoff.
