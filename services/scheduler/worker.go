@@ -72,6 +72,7 @@ func (w *worker) processOneTopic(job *protocol.Job) error {
 	args = append(args, job.Args)
 	// Execute the job
 	err := p(args...)
+	fmt.Println("jobqueue run process")
 	if err != nil {
 		w.m.logger.Printf("jobqueue: Job %v failed with: %v", job.ID, err)
 		job.NbError++
@@ -171,6 +172,9 @@ func (w *worker) jobRepeat(job *protocol.Job, infiniteLoop bool) error {
 
 	// IF A Pending job is still not completed, then continue
 	newPriority := nextRun(job)
+	now := time.Now()
+	fmt.Println(newPriority, time.Unix(0, newPriority).Sub(now).Seconds())
+
 	if newPriority == 0 {
 		w.jobSucceeded(job)
 		return nil
@@ -193,24 +197,42 @@ func (w *worker) jobRepeat(job *protocol.Job, infiniteLoop bool) error {
 }
 
 func nextRun(job *protocol.Job) int64 {
+	//Calculate Next time to run the job
 	newPriority := -time.Unix(0, -job.Priority).Add(time.Duration(job.Delay) * time.Second).UnixNano()
 	now := time.Now()
+
+	// if nextRun is already Passed
 	if now.UnixNano() > -newPriority {
+		fmt.Println("newPritory is passed")
+		// if job must be repeated
 		if job.Repeat > 0 {
+			// calculate maximal expectedPrority
 			expectedPrority := -time.Unix(0, -job.Priority).Add(time.Duration(job.Delay*job.Repeat) * time.Second).UnixNano()
+
+			// if all iterations time have been passed, then recaulculate
 			if now.UnixNano() > -expectedPrority {
 				diff := (now.UnixNano() - expectedPrority) / (10 ^ 6*job.Delay)
 				fmt.Println("bigger", diff)
 				return 0
 			} else {
+				fmt.Println("JOB REPEAT")
+
 				diff := (time.Unix(0, -expectedPrority).Sub(now).Seconds()) / float64(job.Delay)
 				nbSkipped := math.Ceil(diff)
 				fmt.Println("less", diff, nbSkipped, (time.Unix(0, -job.Priority).Sub(now).Seconds())/float64(job.Delay))
-				return expectedPrority
+				effectiveNextPriority := -time.Unix(0, -now.UnixNano()).Add(time.Duration(job.Delay) * time.Second).UnixNano()
+
+				return effectiveNextPriority
 			}
+
+		} else {
+			// We run the process with a delay next time
+			expectedPrority := -now.Add(time.Duration(job.Delay) * time.Second).UnixNano()
+			return expectedPrority
 		}
-		return 0
+
 	} else {
+		fmt.Println("New Priority is not passed")
 		return newPriority
 	}
 }

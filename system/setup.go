@@ -20,7 +20,7 @@ func Setup(flags *shared.Flags) Application {
 	logrus.Infoln("**********************************************************")
 
 	// Create a MySQL-based persistent backend.
-	store, err := mongodb.NewStore("mongodb://localhost:27017/joqueue")
+	store, err := mongodb.NewStore("mongodb://localhost:27017/jobqueue")
 	if err != nil {
 		panic(err)
 	}
